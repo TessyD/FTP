@@ -1,10 +1,29 @@
 #include "client.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <sys/dir.h>
+#include <time.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
 char buf[MAXLINE];
 char file_name[1024];
 int clientSocket;
 char buffer[1024];
 char uploadfile[1024];
+//bool UserStatus = false;
 
 // function to store the contents in a file
 void store_file(char *dest, char file[1024])
@@ -44,54 +63,37 @@ void retr_result(char *filename)
 	printf("\n");
 }
 
-// send contents to server side (upload file contents)
-void send_file(FILE *fp, int clientSocket)
-{
-	char data[MAXLINE] = {0};
-
-	while (fgets(data, MAXLINE, fp) != NULL)
-	{
-		if (send(clientSocket, data, sizeof(data), 0) == -1)
-		{
-			perror("[-] Error in sending data");
-			exit(1);
-		}
-	}
-	bzero(data, MAXLINE);
-}
-
 // duplicate method to check (upload file contents)
 int upload_file(char *fileName)
 {
 	strtok(fileName, "\n");
 
-    char ch;
-    FILE *f;
+	char ch;
+	FILE *f;
 
-    if ((f = fopen(fileName, "r")) == NULL)
-    {
-        if (errno == ENOENT)
-        {
-            return 347;
-        }
-        return 348;
-    }
-
-    int k = 0;
-    ch = fgetc(f);
-    while (ch != EOF)
-    {
-        uploadfile[k] = ch;
-        k++;
-        ch = fgetc(f);
-    }
-    uploadfile[k] = '\0';
-
-	if (send(clientSocket, uploadfile, sizeof(uploadfile), 0) == -1)
+	if ((f = fopen(fileName, "r")) == NULL)
+	{
+		if (errno == ENOENT)
 		{
-			perror("[-] Error in sending data");
-			exit(1);
+			return 347;
 		}
+		return 348;
+	}
+
+	int k = 0;
+	ch = fgetc(f);
+	while (ch != EOF)
+	{
+		uploadfile[k] = ch;
+		k++;
+		ch = fgetc(f);
+	}
+	uploadfile[k] = '\0';
+	if (send(clientSocket, uploadfile, sizeof(uploadfile), 0) == -1)
+	{
+		perror("[-] Error in sending data");
+		exit(1);
+	}
 }
 
 int main(int argc, char *argv[])
@@ -160,7 +162,6 @@ int main(int argc, char *argv[])
 		// handle USER logic
 		if (strncmp(buf, "USER", 4) == 0)
 		{
-
 			printf("Data Returned: \t%s\n", buffer);
 			bzero(buffer, sizeof(buffer));
 		}
@@ -180,12 +181,14 @@ int main(int argc, char *argv[])
 		// handle PWD
 		else if (strncmp(buf, "PWD", 3) == 0)
 		{
-
+			//printf("error");
+			//bzero(buffer, sizeof(buffer));
 			printf("Data Returned: \t%s\n", buffer);
 			bzero(buffer, sizeof(buffer));
+
 			// }
 		}
-		else if (strncmp(buf, "CWD", 3) == 0)
+		else if (strncmp(buf, "CWD ", 3) == 0)
 		{
 
 			printf("Data Returned: \t%s\n", buffer);
@@ -226,14 +229,6 @@ int main(int argc, char *argv[])
 			strcpy(upload_filename, buffer);
 			printf("Message received from server: %s\n", upload_filename);
 			bzero(buffer, sizeof(buffer));
-			// fp = fopen(upload_filename, "r");
-			// if (fp == NULL)
-			// {
-			// 	perror("[-]Error in reading file.");
-			// 	exit(1);
-			// }
-			// printf("Successful in opening the file\n");
-			//send_file(fp, clientSocket);
 			upload_file(upload_filename);
 			// printf("[+] File data sent successfully. \n");
 
@@ -246,6 +241,37 @@ int main(int argc, char *argv[])
 			// printf("Data Returned: File uploaded successfully \t%s\n", buffer);
 			bzero(buffer, sizeof(buffer));
 			// sleep(1);
+		}
+		//hanlde APPE logic
+		else if (strncmp(buf, "APPE ", 5) == 0)
+		{
+			char upload_filename[256];
+			strcpy(upload_filename, buffer);
+			printf("Message received from server: %s\n", upload_filename);
+			bzero(buffer, sizeof(buffer));
+			upload_file(upload_filename);
+			// printf("[+] File data sent successfully. \n");
+
+			if (recv(clientSocket, buffer, 1024, 0) < 0)
+			{
+				printf("[-]Error in receiving data.\n");
+				exit(1);
+			}
+			printf("Data Returned: \t%s\n", buffer);
+			// printf("Data Returned: File uploaded successfully \t%s\n", buffer);
+			bzero(buffer, sizeof(buffer));
+			// sleep(1);
+		}
+		//handle ABOR logic
+		else if (strncmp(buf, "ABOR ",5) == 0)
+		{
+			printf("Abort Returned: \t%s\n", buffer);
+			bzero(buffer, sizeof(buffer));
+			// bzero(buffer, sizeof(buffer));
+			//close(clientSocket);
+			// printf("[-]Disconnected from server.\n");
+			//exit(1);
+			// break;
 		}
 		// hanlde RETR logic
 		else if (strncmp(buf, "RETR ", 5) == 0)
@@ -269,11 +295,11 @@ int main(int argc, char *argv[])
 			bzero(buffer, sizeof(buffer));
 		}
 		// handle ABOr logicx
-		else if (strncmp(buf, "ABOR", 4) == 0)
-		{
-			printf("server response: %s", buffer);
-			bzero(buffer, sizeof(buffer));
-		}
+		// else if (strncmp(buf, "ABOR", 4) == 0)
+		// {
+		// 	printf("server response: %s", buffer);
+		// 	bzero(buffer, sizeof(buffer));
+		// }
 		// handle REIN
 		else if (strncmp(buf, "REIN", 4) == 0)
 		{
@@ -281,6 +307,19 @@ int main(int argc, char *argv[])
 			printf("server response: %s", buffer);
 			bzero(buffer, sizeof(buffer));
 		}
+		else if (strncmp(buf, "RNFR ", 5) == 0)
+		{
+			printf("Sending sever the response: \n ");
+			printf("server response: %s", buffer);
+			bzero(buffer, sizeof(buffer));
+		}
+        else if (strncmp(buf, "RNTO ", 5) == 0)
+            {
+                printf("Renamed file will be here soon: \n ");
+                printf("server response: %s", buffer);
+                bzero(buffer, sizeof(buffer));
+            }
+		bzero(buffer, sizeof(buffer));
 	}
 	return 0;
 }
